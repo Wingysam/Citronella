@@ -2,7 +2,7 @@ import { customAlphabet } from 'nanoid'
 
 const generateId = customAlphabet('abcdefghijklmnopqrstuv', 16)
 
-type TraecyGeneratorOptions = {
+type TraceyGeneratorOptions = {
   sourcePath: string
   code: string
   libPath: string
@@ -10,10 +10,10 @@ type TraecyGeneratorOptions = {
 }
 
 export class TraceyGenerator {
-  private options: TraecyGeneratorOptions
+  private options: TraceyGeneratorOptions
   private debugLibVar: string
 
-  constructor(options: TraecyGeneratorOptions) {
+  constructor(options: TraceyGeneratorOptions) {
     this.options = options
     this.debugLibVar = options.hookVariable ?? generateId()
   }
