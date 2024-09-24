@@ -28,6 +28,10 @@ export class TraceyGenerator {
           foundNonComment = true
           return `${this.generateTraceImport()} ${lineOfCode}`
         }
+        // Skip multi-line statements like f(
+        //   "arg"
+        // )
+        if (!/^\s*[a-z]/i.test(lineOfCode)) return lineOfCode
         return `${this.generateTraceHook(lineNumber + 1)} ${lineOfCode}`
       })
       .join('\n')
