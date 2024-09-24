@@ -3,6 +3,10 @@
   "license": "AGPL-3.0",
   "module": "src/index.ts",
   "type": "module",
+  "files": [
+    "src",
+    "Tracey.luau"
+  ],
   "devDependencies": {
     "@types/bun": "latest",
     "prettier": "^3.3.3"
