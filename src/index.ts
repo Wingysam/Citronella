@@ -234,6 +234,7 @@ export class Citronella {
 
     // Update the location of all nodes that are after the splice
     for (const node of this.astNodes) {
+      if (!Object.hasOwn(node, 'location')) continue
       if (
         node.location.start.line === line &&
         node.location.start.column >= column
