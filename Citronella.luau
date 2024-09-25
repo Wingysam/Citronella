@@ -13,8 +13,9 @@ local function callCallbacks(id)
 end
 
 function Citronella._register(sourceFile)
-	return function(line) -- could also fetch the line by parsing debug.traceback but that's evil
-		callCallbacks(`{sourceFile}:{line}`)
+	return function(line, column, variables) -- could also fetch the line by parsing debug.traceback but that's evil
+		callCallbacks(`{sourceFile}:{line}:{column}`)
+		callCallbacks(`{sourceFile}:{line}:*`)
 		callCallbacks(`{sourceFile}:*`)
 		callCallbacks('*')
 	end
@@ -30,6 +31,12 @@ function Citronella.hook(target, callback)
 
 	function Hook.remove()
 		Citronella._breakpoints[target][callback] = nil
+
+		-- Remove the table if it's empty
+		for _ in Citronella._breakpoints[target] do
+			return
+		end
+		Citronella._breakpoints[target] = nil
 	end
 
 	return Hook
