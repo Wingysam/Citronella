@@ -1,11 +1,11 @@
 {
-  "name": "tracey",
+  "name": "citronella",
   "license": "AGPL-3.0",
   "module": "src/index.ts",
   "type": "module",
   "files": [
     "src",
-    "Tracey.luau"
+    "Citronella.luau"
   ],
   "devDependencies": {
     "@types/bun": "latest",

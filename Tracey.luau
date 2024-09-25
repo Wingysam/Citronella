@@ -1,9 +1,9 @@
 --!strict
-local Tracey = {}
-Tracey._breakpoints = {}
+local Citronella = {}
+Citronella._breakpoints = {}
 
 local function callCallbacks(id)
-	local callbacks = Tracey._breakpoints[id]
+	local callbacks = Citronella._breakpoints[id]
 	if callbacks == nil then
 		return
 	end
@@ -12,7 +12,7 @@ local function callCallbacks(id)
 	end
 end
 
-function Tracey._register(sourceFile)
+function Citronella._register(sourceFile)
 	return function(line) -- could also fetch the line by parsing debug.traceback but that's evil
 		callCallbacks(`{sourceFile}:{line}`)
 		callCallbacks(`{sourceFile}:*`)
@@ -20,19 +20,19 @@ function Tracey._register(sourceFile)
 	end
 end
 
-function Tracey.hook(target, callback)
-	if Tracey._breakpoints[target] == nil then
-		Tracey._breakpoints[target] = {}
+function Citronella.hook(target, callback)
+	if Citronella._breakpoints[target] == nil then
+		Citronella._breakpoints[target] = {}
 	end
-	Tracey._breakpoints[target][callback] = true
+	Citronella._breakpoints[target][callback] = true
 
 	local Hook = {}
 
 	function Hook.remove()
-		Tracey._breakpoints[target][callback] = nil
+		Citronella._breakpoints[target][callback] = nil
 	end
 
 	return Hook
 end
 
-return Tracey
+return Citronella
