@@ -2,22 +2,31 @@
 local Citronella = {}
 Citronella._breakpoints = {}
 
-local function callCallbacks(id)
+local function callCallbacks(id, data)
 	local callbacks = Citronella._breakpoints[id]
 	if callbacks == nil then
 		return
 	end
 	for callback in callbacks do
-		callback()
+		callback(data)
 	end
 end
 
 function Citronella._register(sourceFile)
 	return function(line, column, variables) -- could also fetch the line by parsing debug.traceback but that's evil
-		callCallbacks(`{sourceFile}:{line}:{column}`)
-		callCallbacks(`{sourceFile}:{line}:*`)
-		callCallbacks(`{sourceFile}:*`)
-		callCallbacks('*')
+		return function(...)
+			local data = {
+				sourceFile = sourceFile,
+				line = line,
+				column = column,
+				variables = variables,
+			}
+			callCallbacks(`{sourceFile}:{line}:{column}`, data)
+			callCallbacks(`{sourceFile}:{line}:*`, data)
+			callCallbacks(`{sourceFile}:*`, data)
+			callCallbacks('*')
+			return ...
+		end
 	end
 end
 
