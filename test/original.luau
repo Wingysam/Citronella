@@ -1,5 +1,5 @@
 --!strict
-local a = 'b'
+local a = 1e+500
 local b = a
 local function f()
 	print(b)

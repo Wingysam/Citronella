@@ -1,4 +1,5 @@
 import { customAlphabet } from 'nanoid'
+import JSON5 from 'json5'
 
 const generateId = customAlphabet('abcdefghijklmnopqrstuv', 16)
 
@@ -132,7 +133,8 @@ export class Citronella {
     proc.stdin.write(encoder.encode(this.code))
     proc.stdin.flush()
     proc.stdin.end()
-    const result = await response.json()
+    const output = await response.text()
+    const result = JSON5.parse(output)
     return result
   }
 
