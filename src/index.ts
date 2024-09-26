@@ -17,6 +17,7 @@ type AstNode =
 type AstBase = {
   type: string
   location: Location
+  originalLocation: Location
   variablesInScope: string[]
 }
 
@@ -148,20 +149,20 @@ export class Citronella {
       if (node.type === 'AstStatExpr') {
         this.hookExpression(
           node.location,
-          `${node.location.start.line + 1},${node.location.start.column + 1},${varsString}`,
+          `${node.originalLocation.start.line + 1},${node.originalLocation.start.column + 1},${varsString}`,
         )
       } else if (node.type === 'AstStatLocal') {
         for (const value of node.values) {
           this.hookExpression(
             value.location,
-            `${value.location.start.line + 1},${value.location.start.column + 1},${varsString}`,
+            `${value.originalLocation.start.line + 1},${value.originalLocation.start.column + 1},${varsString}`,
           )
         }
       } else if (node.type === 'AstExprCall') {
         for (const arg of node.args) {
           this.hookExpression(
             arg.location,
-            `${arg.location.start.line + 1},${arg.location.start.column + 1},${varsString}`,
+            `${arg.originalLocation.start.line + 1},${arg.originalLocation.start.column + 1},${varsString}`,
           )
         }
       }
@@ -208,6 +209,10 @@ export class Citronella {
 
       if ('location' in node) {
         node.location = parseLocation(node.location)
+        node.originalLocation = {
+          start: { ...node.location.start },
+          end: { ...node.location.end },
+        }
       }
     }
 
