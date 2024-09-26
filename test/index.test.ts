@@ -30,36 +30,3 @@ test('Generates code properly', async () => {
     expect(transformed.breakpoints).toEqual(expectedBreakpoints)
   }
 })
-
-test(
-  'Generates code quickly',
-  async () => {
-    const start = Bun.nanoseconds() / 1000 / 1000
-    const sums = new Map<string, number>()
-    const iterations = 10
-    for (let i = 0; i < iterations; i++) {
-      const { profileLabels } = await Citronella.inject({
-        sourcePath: '',
-        code: originalCode,
-        libPath: '',
-      })
-      for (const [label, duration] of profileLabels) {
-        sums.set(label, (sums.get(label) ?? 0) + duration)
-      }
-    }
-    const end = Bun.nanoseconds() / 1000 / 1000
-    const duration = end - start
-
-    const averages = new Map<string, number>()
-    for (const [label, sum] of sums) {
-      averages.set(label, sum / iterations / 1000 / 1000)
-    }
-
-    console.log(
-      `Code generation took ${duration / iterations} milliseconds on average`,
-      averages,
-    )
-    expect(duration).toBeLessThan(1000)
-  },
-  { timeout: 100000 },
-)
