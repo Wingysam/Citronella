@@ -1,7 +1,8 @@
 --!strict
 local a = 1e+500
 local b = a
-local function f()
+local function f(x)
 	print(b)
+	return x
 end
-f()
+f('Δ') print('Hello, world!')

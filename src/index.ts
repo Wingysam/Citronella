@@ -148,20 +148,20 @@ export class Citronella {
       if (node.type === 'AstStatExpr') {
         this.hookExpression(
           node.location,
-          `${node.location.start.line},${node.location.start.column},${varsString}`,
+          `${node.location.start.line + 1},${node.location.start.column + 1},${varsString}`,
         )
       } else if (node.type === 'AstStatLocal') {
         for (const value of node.values) {
           this.hookExpression(
             value.location,
-            `${value.location.start.line},${value.location.start.column},${varsString}`,
+            `${value.location.start.line + 1},${value.location.start.column + 1},${varsString}`,
           )
         }
       } else if (node.type === 'AstExprCall') {
         for (const arg of node.args) {
           this.hookExpression(
             arg.location,
-            `${arg.location.start.line},${arg.location.start.column},${varsString}`,
+            `${arg.location.start.line + 1},${arg.location.start.column + 1},${varsString}`,
           )
         }
       }
@@ -231,7 +231,7 @@ export class Citronella {
   private spliceCode(line: number, column: number, add: string) {
     const lines = this.code.split('\n')
     const lineIndex = line
-    lines[lineIndex] = spliceString(lines[lineIndex], column, add)
+    lines[lineIndex] = spliceStringBytes(lines[lineIndex], column, add)
     this.code = lines.join('\n')
 
     // Update the location of all nodes that are after the splice
@@ -272,8 +272,14 @@ export class Citronella {
   }
 }
 
-function spliceString(str: string, index: number, add: string) {
-  return str.slice(0, index) + add + str.slice(index)
+function spliceStringBytes(str: string, index: number, add: string) {
+  return spliceBuffer(Buffer.from(str), index, add).toString()
+}
+
+function spliceBuffer(buffer: Buffer, index: number, add: string) {
+  const start = buffer.subarray(0, index)
+  const end = buffer.subarray(index)
+  return Buffer.concat([start, Buffer.from(add), end])
 }
 
 type Location = ReturnType<typeof parseLocation>
