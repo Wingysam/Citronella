@@ -103,6 +103,10 @@ export class Citronella {
   private debugLibVar: string
   private astNodes!: AstNode[]
 
+  private start: number
+  private end: number
+  private astTime: number
+
   private constructor(options: CitronellaOptions) {
     this.options = options
     this.code = options.code
@@ -111,11 +115,19 @@ export class Citronella {
 
   static async inject(options: CitronellaOptions) {
     const generator = new Citronella(options)
+    generator.start = Bun.nanoseconds()
     await generator.getAstAndInsertHooks()
     generator.injectTraceImport()
+    generator.end = Bun.nanoseconds()
+
+    const totalMs = (generator.end - generator.start) / 1000 / 1000
+    const astMs = generator.astTime / 1000 / 1000
+
     return {
       code: generator.code,
       breakpoints: generator.breakpoints,
+      totalMs,
+      astMs,
     }
   }
 
@@ -125,6 +137,7 @@ export class Citronella {
   }
 
   private async getAst(): Promise<AstDocument> {
+    const start = Bun.nanoseconds()
     const proc = Bun.spawn(['luau-ast', '-'], {
       stdin: 'pipe',
     })
@@ -135,6 +148,8 @@ export class Citronella {
     proc.stdin.end()
     const output = await response.text()
     const result = JSON5.parse(output)
+    const end = Bun.nanoseconds()
+    this.astTime = end - start
     return result
   }
 

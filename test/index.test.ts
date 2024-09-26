@@ -30,3 +30,26 @@ test('Generates code properly', async () => {
     expect(transformed.breakpoints).toEqual(expectedBreakpoints)
   }
 })
+
+test('Generates code quickly', async () => {
+  const start = Bun.nanoseconds() / 1000 / 1000
+  let sumMs = 0
+  let sumAstMs = 0
+  for (let i = 0; i < 1000; i++) {
+    const { totalMs, astMs } = await Citronella.inject({
+      sourcePath: '',
+      code: originalCode,
+      libPath: '',
+    })
+    sumMs += totalMs
+    sumAstMs += astMs
+  }
+  const end = Bun.nanoseconds() / 1000 / 1000
+  const duration = end - start
+
+  console.log(`Code generation took ${duration} milliseconds`, {
+    avgMs: sumMs / 1000,
+    avgAstMs: sumAstMs / 1000,
+  })
+  expect(duration).toBeLessThan(1000)
+})
