@@ -97,25 +97,31 @@ type CitronellaOptions = {
 }
 
 export class Citronella {
-  private code: string
+  private code!: string
   private breakpoints: Location[] = []
-  private options: CitronellaOptions
-  private debugLibVar: string
+  private options!: CitronellaOptions
+  private debugLibVar!: string
   private astNodes!: AstNode[]
 
   private constructor(options: CitronellaOptions) {
-    this.options = options
-    this.code = options.code
-    this.debugLibVar = options.hookVariable ?? generateId()
+    this.profile('constructor', () => {
+      this.options = options
+      this.code = options.code
+      this.debugLibVar = options.hookVariable ?? generateId()
+    })
   }
 
   static async inject(options: CitronellaOptions) {
     const generator = new Citronella(options)
     await generator.getAstAndInsertHooks()
-    generator.injectTraceImport()
+    generator.profile('inject', async () => {
+      generator.injectTraceImport()
+    })
+
     return {
       code: generator.code,
       breakpoints: generator.breakpoints,
+      profileLabels: generator.profileLabels,
     }
   }
 
@@ -125,47 +131,53 @@ export class Citronella {
   }
 
   private async getAst(): Promise<AstDocument> {
-    const proc = Bun.spawn(['luau-ast', '-'], {
-      stdin: 'pipe',
+    return this.profile('generate ast', async () => {
+      const proc = Bun.spawn(['luau-ast', '-'], {
+        stdin: 'pipe',
+      })
+      const response = new Response(proc.stdout)
+      const encoder = new TextEncoder()
+      proc.stdin.write(encoder.encode(this.code))
+      proc.stdin.flush()
+      proc.stdin.end()
+      const output = await response.text()
+      const result = JSON5.parse(output)
+      return result
     })
-    const response = new Response(proc.stdout)
-    const encoder = new TextEncoder()
-    proc.stdin.write(encoder.encode(this.code))
-    proc.stdin.flush()
-    proc.stdin.end()
-    const output = await response.text()
-    const result = JSON5.parse(output)
-    return result
   }
 
   private insertTraceHooks(astStatBlock: AstStatBlock) {
-    this.astNodes = this.walkAst(astStatBlock).nodes
-    for (const node of this.astNodes) {
-      let varsString = ''
-      if (typeof node === 'object' && node !== null) {
-        varsString = this.variableNamesToTable(node.variablesInScope)
-      }
-      if (node.type === 'AstStatExpr') {
-        this.hookExpression(
-          node.location,
-          `${node.location.start.line + 1},${node.location.start.column + 1},${varsString}`,
-        )
-      } else if (node.type === 'AstStatLocal') {
-        for (const value of node.values) {
-          this.hookExpression(
-            value.location,
-            `${value.location.start.line + 1},${value.location.start.column + 1},${varsString}`,
-          )
+    this.profile('insert trace hooks', () => {
+      this.profile('walk ast', () => {
+        this.astNodes = this.walkAst(astStatBlock).nodes
+      })
+      for (const node of this.astNodes) {
+        let varsString = ''
+        if (typeof node === 'object' && node !== null) {
+          varsString = this.variableNamesToTable(node.variablesInScope)
         }
-      } else if (node.type === 'AstExprCall') {
-        for (const arg of node.args) {
+        if (node.type === 'AstStatExpr') {
           this.hookExpression(
-            arg.location,
-            `${arg.location.start.line + 1},${arg.location.start.column + 1},${varsString}`,
+            node.location,
+            `${node.location.start.line + 1},${node.location.start.column + 1},${varsString}`,
           )
+        } else if (node.type === 'AstStatLocal') {
+          for (const value of node.values) {
+            this.hookExpression(
+              value.location,
+              `${value.location.start.line + 1},${value.location.start.column + 1},${varsString}`,
+            )
+          }
+        } else if (node.type === 'AstExprCall') {
+          for (const arg of node.args) {
+            this.hookExpression(
+              arg.location,
+              `${arg.location.start.line + 1},${arg.location.start.column + 1},${varsString}`,
+            )
+          }
         }
       }
-    }
+    })
   }
 
   // Flattens the AST into an array of every object in the tree that has a "type" key.
@@ -180,14 +192,17 @@ export class Citronella {
     if (Array.isArray(node)) {
       for (const value of node) {
         const valueAst = this.walkAst(value, variablesInScope)
-        variablesInScope = [
-          ...variablesInScope,
-          ...valueAst.newVariablesInScope,
-        ]
+        this.profile('add variables in scope', () => {
+          variablesInScope = variablesInScope.concat(
+            valueAst.newVariablesInScope,
+          )
+        })
         nodes.push(...valueAst.nodes)
       }
     } else if (typeof node === 'object' && node !== null) {
-      node.variablesInScope = [...variablesInScope]
+      this.profile('copy variablesInScope', () => {
+        node.variablesInScope = [...variablesInScope]
+      })
 
       for (const [key, value] of Object.entries(node)) {
         if (key === 'type') {
@@ -202,54 +217,63 @@ export class Citronella {
           }
         } else if (typeof value === 'object') {
           const valueAst = this.walkAst(value, variablesInScope)
-          variablesInScope = [
-            ...variablesInScope,
-            ...valueAst.newVariablesInScope,
-          ]
+          this.profile('add variables in scope (object)', () => {
+            variablesInScope = variablesInScope.concat(
+              valueAst.newVariablesInScope,
+            )
+          })
           nodes.push(...valueAst.nodes)
         }
       }
 
-      if (Object.hasOwn(node, 'location')) {
-        node.location = parseLocation(node.location)
-      }
+      this.profile('process location', () => {
+        if (Object.hasOwn(node, 'location')) {
+          node.location = parseLocation(node.location)
+        }
+      })
     }
 
     return { nodes, newVariablesInScope }
   }
 
   private hookExpression(location: Location, params: string) {
-    this.breakpoints.push(location)
-    this.spliceCode(location.end.line, location.end.column, ')')
-    this.spliceCode(
-      location.start.line,
-      location.start.column,
-      `${this.debugLibVar}(${params})(`,
-    )
+    this.profile('hook expression', () => {
+      this.breakpoints.push(location)
+      this.spliceCode(location.end.line, location.end.column, ')')
+      this.spliceCode(
+        location.start.line,
+        location.start.column,
+        `${this.debugLibVar}(${params})(`,
+      )
+    })
   }
 
   private spliceCode(line: number, column: number, add: string) {
-    const lines = this.code.split('\n')
-    const lineIndex = line
-    lines[lineIndex] = spliceStringBytes(lines[lineIndex], column, add)
-    this.code = lines.join('\n')
+    this.profile('splice code', () => {
+      const lines = this.code.split('\n')
+      const lineIndex = line
+      lines[lineIndex] = spliceStringBytes(lines[lineIndex], column, add)
+      this.code = lines.join('\n')
 
-    // Update the location of all nodes that are after the splice
-    for (const node of this.astNodes) {
-      if (!Object.hasOwn(node, 'location')) continue
-      if (
-        node.location.start.line === line &&
-        node.location.start.column >= column
-      ) {
-        node.location.start.column += add.length
-      }
-      if (
-        node.location.end.line === line &&
-        node.location.end.column >= column
-      ) {
-        node.location.end.column += add.length
-      }
-    }
+      // Update the location of all nodes that are after the splice
+      this.profile('update locations', () => {
+        for (const node of this.astNodes) {
+          if (!('location' in node)) continue
+          if (
+            node.location.start.line === line &&
+            node.location.start.column >= column
+          ) {
+            node.location.start.column += add.length
+          }
+          if (
+            node.location.end.line === line &&
+            node.location.end.column >= column
+          ) {
+            node.location.end.column += add.length
+          }
+        }
+      })
+    })
   }
 
   private variableNamesToTable(variables: string[]) {
@@ -269,6 +293,39 @@ export class Citronella {
 
   private generateTraceImport() {
     return `local ${this.debugLibVar}=require(${this.options.libPath})._register('${this.options.sourcePath}');`
+  }
+
+  private activeLabels = new Set<string>()
+  private profileLabels = new Map<string, number>()
+  private profile<T>(name: string, callback: () => T) {
+    if (this.activeLabels.has(name)) {
+      return callback()
+    }
+    this.activeLabels.add(name)
+    const start = Bun.nanoseconds()
+    const result = callback()
+    if (result instanceof Promise) {
+      result.then(() => {
+        const end = Bun.nanoseconds()
+        const duration = end - start
+        if (this.profileLabels.has(name)) {
+          this.profileLabels.set(name, this.profileLabels.get(name)! + duration)
+        } else {
+          this.profileLabels.set(name, duration)
+        }
+        this.activeLabels.delete(name)
+      })
+    } else {
+      const end = Bun.nanoseconds()
+      const duration = end - start
+      if (this.profileLabels.has(name)) {
+        this.profileLabels.set(name, this.profileLabels.get(name)! + duration)
+      } else {
+        this.profileLabels.set(name, duration)
+      }
+      this.activeLabels.delete(name)
+    }
+    return result
   }
 }
 
