@@ -24,7 +24,7 @@ function Citronella._register(sourceFile)
 			callCallbacks(`{sourceFile}:{line}:{column}`, data)
 			callCallbacks(`{sourceFile}:{line}:*`, data)
 			callCallbacks(`{sourceFile}:*`, data)
-			callCallbacks('*')
+			callCallbacks('*', data)
 			return ...
 		end
 	end
