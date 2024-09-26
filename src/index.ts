@@ -173,21 +173,18 @@ export class Citronella {
     node: any,
     variablesInScope: string[] = [],
   ): { nodes: AstNode[]; newVariablesInScope: string[] } {
-    const nodes: any[] = []
+    let nodes: any[] = []
 
     const newVariablesInScope: string[] = []
 
     if (Array.isArray(node)) {
       for (const value of node) {
         const valueAst = this.walkAst(value, variablesInScope)
-        variablesInScope = [
-          ...variablesInScope,
-          ...valueAst.newVariablesInScope,
-        ]
-        nodes.push(...valueAst.nodes)
+        variablesInScope = variablesInScope.concat(valueAst.newVariablesInScope)
+        nodes = nodes.concat(valueAst.nodes)
       }
     } else if (typeof node === 'object' && node !== null) {
-      node.variablesInScope = [...variablesInScope]
+      node.variablesInScope = variablesInScope.slice() // Clone the array (faster than [...spread])
 
       for (const [key, value] of Object.entries(node)) {
         if (key === 'type') {
@@ -202,15 +199,14 @@ export class Citronella {
           }
         } else if (typeof value === 'object') {
           const valueAst = this.walkAst(value, variablesInScope)
-          variablesInScope = [
-            ...variablesInScope,
-            ...valueAst.newVariablesInScope,
-          ]
-          nodes.push(...valueAst.nodes)
+          variablesInScope = variablesInScope.concat(
+            valueAst.newVariablesInScope,
+          )
+          nodes = nodes.concat(valueAst.nodes)
         }
       }
 
-      if (Object.hasOwn(node, 'location')) {
+      if ('location' in node) {
         node.location = parseLocation(node.location)
       }
     }
@@ -236,7 +232,7 @@ export class Citronella {
 
     // Update the location of all nodes that are after the splice
     for (const node of this.astNodes) {
-      if (!Object.hasOwn(node, 'location')) continue
+      if (!('location' in node)) continue
       if (
         node.location.start.line === line &&
         node.location.start.column >= column
