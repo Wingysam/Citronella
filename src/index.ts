@@ -17,7 +17,6 @@ type AstNode =
 type AstBase = {
   type: string
   location: Location
-  originalLocation: Location
   variablesInScope: string[]
 }
 
@@ -98,15 +97,20 @@ type CitronellaOptions = {
 }
 
 export class Citronella {
-  private code: string
+  private code: Uint8Array
+  private lineOffsets: number[]
   private breakpoints: Location[] = []
+  private writes: { offset: number; data: Uint8Array }[] = []
+  private encoder = new TextEncoder()
+  private decoder = new TextDecoder()
   private options: CitronellaOptions
   private debugLibVar: string
   private astNodes!: AstNode[]
 
   private constructor(options: CitronellaOptions) {
     this.options = options
-    this.code = options.code
+    this.code = this.encoder.encode(options.code)
+    this.lineOffsets = getLineOffsets(this.code)
     this.debugLibVar = options.hookVariable ?? generateId()
   }
 
@@ -114,8 +118,9 @@ export class Citronella {
     const generator = new Citronella(options)
     await generator.getAstAndInsertHooks()
     generator.injectTraceImport()
+    generator.applyWrites()
     return {
-      code: generator.code,
+      code: generator.decoder.decode(generator.code),
       breakpoints: generator.breakpoints,
     }
   }
@@ -130,8 +135,7 @@ export class Citronella {
       stdin: 'pipe',
     })
     const response = new Response(proc.stdout)
-    const encoder = new TextEncoder()
-    proc.stdin.write(encoder.encode(this.code))
+    proc.stdin.write(this.code)
     proc.stdin.flush()
     proc.stdin.end()
     const output = await response.text()
@@ -149,20 +153,20 @@ export class Citronella {
       if (node.type === 'AstStatExpr') {
         this.hookExpression(
           node.location,
-          `${node.originalLocation.start.line + 1},${node.originalLocation.start.column + 1},${varsString}`,
+          `${node.location.start.line + 1},${node.location.start.column + 1},${varsString}`,
         )
       } else if (node.type === 'AstStatLocal') {
         for (const value of node.values) {
           this.hookExpression(
             value.location,
-            `${value.originalLocation.start.line + 1},${value.originalLocation.start.column + 1},${varsString}`,
+            `${value.location.start.line + 1},${value.location.start.column + 1},${varsString}`,
           )
         }
       } else if (node.type === 'AstExprCall') {
         for (const arg of node.args) {
           this.hookExpression(
             arg.location,
-            `${arg.originalLocation.start.line + 1},${arg.originalLocation.start.column + 1},${varsString}`,
+            `${arg.location.start.line + 1},${arg.location.start.column + 1},${varsString}`,
           )
         }
       }
@@ -209,10 +213,6 @@ export class Citronella {
 
       if ('location' in node) {
         node.location = parseLocation(node.location)
-        node.originalLocation = {
-          start: { ...node.location.start },
-          end: { ...node.location.end },
-        }
       }
     }
 
@@ -230,27 +230,22 @@ export class Citronella {
   }
 
   private spliceCode(line: number, column: number, add: string) {
-    const lines = this.code.split('\n')
-    const lineIndex = line
-    lines[lineIndex] = spliceStringBytes(lines[lineIndex], column, add)
-    this.code = lines.join('\n')
+    const offset = this.lineOffsets[line] + column
+    const data = this.encoder.encode(add)
+    this.writes.push({ offset, data })
+  }
 
-    // Update the location of all nodes that are after the splice
-    for (const node of this.astNodes) {
-      if (!('location' in node)) continue
-      if (
-        node.location.start.line === line &&
-        node.location.start.column >= column
-      ) {
-        node.location.start.column += add.length
-      }
-      if (
-        node.location.end.line === line &&
-        node.location.end.column >= column
-      ) {
-        node.location.end.column += add.length
-      }
+  private applyWrites() {
+    this.writes.sort((a, b) => a.offset - b.offset)
+    const arrays = []
+    let lastOffset = 0
+    for (const write of this.writes) {
+      arrays.push(this.code.slice(lastOffset, write.offset))
+      arrays.push(write.data)
+      lastOffset = write.offset
     }
+    arrays.push(this.code.slice(lastOffset))
+    this.code = combineUint8Arrays(arrays)
   }
 
   private variableNamesToTable(variables: string[]) {
@@ -259,13 +254,22 @@ export class Citronella {
 
   private injectTraceImport() {
     const traceImport = this.generateTraceImport()
-    const lines = this.code.split('\n')
-    const firstLineThatIsNotCompilerDirective = lines.findIndex(
-      (line) => !line.startsWith('--!'),
-    )
-    lines[firstLineThatIsNotCompilerDirective] =
-      `${traceImport}${lines[firstLineThatIsNotCompilerDirective]}`
-    this.code = lines.join('\n')
+    const dashCharCode = '-'.charCodeAt(0)
+    const bangCharCode = '!'.charCodeAt(0)
+    for (const lineOffset of this.lineOffsets) {
+      if (
+        this.code[lineOffset] === dashCharCode &&
+        this.code[lineOffset + 1] === dashCharCode &&
+        this.code[lineOffset + 2] === bangCharCode
+      ) {
+        continue
+      }
+      this.writes.push({
+        offset: lineOffset,
+        data: this.encoder.encode(traceImport),
+      })
+      return
+    }
   }
 
   private generateTraceImport() {
@@ -273,14 +277,26 @@ export class Citronella {
   }
 }
 
-function spliceStringBytes(str: string, index: number, add: string) {
-  return spliceBuffer(Buffer.from(str), index, add).toString()
+const newlineCharCode = '\n'.charCodeAt(0)
+function getLineOffsets(buffer: Uint8Array) {
+  const lineOffsets = [0]
+  for (let i = 0; i < buffer.length; i++) {
+    if (buffer[i] === newlineCharCode) {
+      lineOffsets.push(i + 1)
+    }
+  }
+  return lineOffsets
 }
 
-function spliceBuffer(buffer: Buffer, index: number, add: string) {
-  const start = buffer.subarray(0, index)
-  const end = buffer.subarray(index)
-  return Buffer.concat([start, Buffer.from(add), end])
+function combineUint8Arrays(arrays: Uint8Array[]) {
+  const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0)
+  const result = new Uint8Array(totalLength)
+  let offset = 0
+  for (const array of arrays) {
+    result.set(array, offset)
+    offset += array.length
+  }
+  return result
 }
 
 type Location = ReturnType<typeof parseLocation>
