@@ -7,6 +7,9 @@
     "src",
     "Citronella.luau"
   ],
+  "scripts": {
+    "benchmark": "bun run benchmark/index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "prettier": "^3.3.3"

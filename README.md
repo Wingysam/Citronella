@@ -13,3 +13,9 @@ To run tests:
 ```bash
 bun test
 ```
+
+To run benchmarks:
+
+```bash
+bun benchmark
+```
