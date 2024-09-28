@@ -239,10 +239,15 @@ export class Citronella {
     this.writes.sort((a, b) => a.offset - b.offset)
     const arrays = []
     let lastOffset = 0
+    const writtenTo = new Set<number>()
     for (const write of this.writes) {
+      if (writtenTo.has(write.offset)) {
+        throw new Error(`Duplicate writes at index ${write.offset}`)
+      }
       arrays.push(this.code.slice(lastOffset, write.offset))
       arrays.push(write.data)
       lastOffset = write.offset
+      writtenTo.add(write.offset)
     }
     arrays.push(this.code.slice(lastOffset))
     this.code = combineUint8Arrays(arrays)
