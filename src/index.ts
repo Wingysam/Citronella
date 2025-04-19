@@ -244,7 +244,10 @@ export class Citronella {
       if (writtenTo.has(write.offset)) {
         throw new Error(`Duplicate writes at index ${write.offset}`)
       }
-      arrays.push(this.code.slice(lastOffset, write.offset))
+      // We sometimes write -1 for the offset of the initial import so the wrapper around the first expression can have offset 0
+      // We still want to write this at index 0, but we do so after inserting the expression's wrapper.
+      const actualOffset = Math.max(0, write.offset)
+      arrays.push(this.code.slice(lastOffset, actualOffset))
       arrays.push(write.data)
       lastOffset = write.offset
       writtenTo.add(write.offset)
@@ -270,7 +273,11 @@ export class Citronella {
         continue
       }
       this.writes.push({
-        offset: lineOffset,
+        // If this is at the beginning of the file,
+        // we want the first expression's wrapper to be at offset 0.
+        // To make the registration hook go before it, we set its offset to -1.
+        // applyWrites then changes it back to 0 when actually applying it.
+        offset: lineOffset === 0 ? -1 : lineOffset,
         data: this.encoder.encode(traceImport),
       })
       return

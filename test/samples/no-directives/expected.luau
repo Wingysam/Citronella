@@ -1,1 +1,1 @@
--- Don't currently have good data for this. Need to fix duplicate writes bug.
+local _trace=require('@lib/citronella')._register('test.lua');_trace(1,1,{})(print())
