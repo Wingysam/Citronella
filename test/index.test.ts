@@ -33,9 +33,12 @@ for (const sample of await fs.readdir('test/samples')) {
         'Transformed breakpoints:\n' + JSON.stringify(transformed.breakpoints),
       )
       if (process.env.WRITE_EXPECTED) {
-        await fs.writeFile('test/expected.luau', transformed.code)
         await fs.writeFile(
-          'test/expected-breakpoints.json',
+          `test/samples/${sample}/expected.luau`,
+          transformed.code,
+        )
+        await fs.writeFile(
+          `test/samples/${sample}/expected-breakpoints.json`,
           JSON.stringify(transformed.breakpoints),
         )
       } else {
