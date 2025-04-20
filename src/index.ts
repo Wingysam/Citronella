@@ -149,7 +149,16 @@ export class Citronella {
 
   private insertTraceHooks(astStatBlock: AstStatBlock) {
     this.astNodes = this.walkAst(astStatBlock).nodes
+    let previousNode: AstNode | undefined
     for (const node of this.astNodes) {
+      if (
+        previousNode &&
+        node.location.end.line === previousNode.location.end.line &&
+        node.location.end.column === previousNode.location.end.column
+      )
+        // Node ends at the same offset as the previous node.
+        // Probably a paren-less call. We can't insert a hook here.
+        continue
       let varsString = ''
       if (typeof node === 'object' && node !== null) {
         varsString = this.variableNamesToTable(node.variablesInScope)
@@ -174,6 +183,7 @@ export class Citronella {
           )
         }
       }
+      previousNode = node
     }
   }
 
