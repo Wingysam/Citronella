@@ -16,27 +16,33 @@ type AstNode =
 
 type AstBase = {
   type: string
-  location: Location
   variablesInScope: string[]
 }
 
-type AstStatBlock = AstBase & {
-  type: 'AstStatBlock'
-  hasEnd: boolean
-  body: AstNode[]
+type AstBaseLocation = {
+  location: Location
 }
 
-type AstStatLocal = AstBase & {
-  type: 'AstStatLocal'
-  vars: AstLocal[]
-  values: AstExpr[]
-}
+type AstStatBlock = AstBase &
+  AstBaseLocation & {
+    type: 'AstStatBlock'
+    hasEnd: boolean
+    body: AstNode[]
+  }
 
-type AstLocal = AstBase & {
-  type: 'AstLocal'
-  luauType: any
-  name: string
-}
+type AstStatLocal = AstBase &
+  AstBaseLocation & {
+    type: 'AstStatLocal'
+    vars: AstLocal[]
+    values: AstExpr[]
+  }
+
+type AstLocal = AstBase &
+  AstBaseLocation & {
+    type: 'AstLocal'
+    luauType: any
+    name: string
+  }
 
 type AstExpr =
   | AstExprTable
@@ -44,49 +50,63 @@ type AstExpr =
   | AstExprCall
   | AstExprGlobal
   | AstExprConstantString
+  | AstExprTableItem
 
-type AstExprTable = AstBase & {
-  type: 'AstExprTable'
-  items: any[]
-}
+type AstExprTable = AstBase &
+  AstBaseLocation & {
+    type: 'AstExprTable'
+    items: any[]
+  }
 
-type AstStatLocalFunction = AstBase & {
-  type: 'AstStatLocalFunction'
-  name: AstLocal
-  func: AstExprFunction
-}
+type AstStatLocalFunction = AstBase &
+  AstBaseLocation & {
+    type: 'AstStatLocalFunction'
+    name: AstLocal
+    func: AstExprFunction
+  }
 
-type AstExprFunction = AstBase & {
-  type: 'AstExprFunction'
-  generics: any[]
-  genericPacks: any[]
-  args: any[]
-  vararg: boolean
-  varargLocation: string
-  body: AstStatBlock
-  functionDepth: number
-  debugname: string
-}
+type AstExprFunction = AstBase &
+  AstBaseLocation & {
+    type: 'AstExprFunction'
+    generics: any[]
+    genericPacks: any[]
+    args: any[]
+    vararg: boolean
+    varargLocation: string
+    body: AstStatBlock
+    functionDepth: number
+    debugname: string
+  }
 
-type AstStatExpr = AstBase & {
-  type: 'AstStatExpr'
-  expr: AstExprCall
-}
+type AstStatExpr = AstBase &
+  AstBaseLocation & {
+    type: 'AstStatExpr'
+    expr: AstExprCall
+  }
 
-type AstExprCall = AstBase & {
-  type: 'AstExprCall'
-  func: AstExprGlobal
-  args: AstExpr[]
-}
+type AstExprCall = AstBase &
+  AstBaseLocation & {
+    type: 'AstExprCall'
+    func: AstExprGlobal
+    args: AstExpr[]
+  }
 
-type AstExprGlobal = AstBase & {
-  type: 'AstExprGlobal'
-  global: string
-}
+type AstExprGlobal = AstBase &
+  AstBaseLocation & {
+    type: 'AstExprGlobal'
+    global: string
+  }
 
-type AstExprConstantString = AstBase & {
-  type: 'AstExprConstantString'
-  value: string
+type AstExprConstantString = AstBase &
+  AstBaseLocation & {
+    type: 'AstExprConstantString'
+    value: string
+  }
+
+type AstExprTableItem = AstBase & {
+  type: 'AstExprTableItem'
+  kind: 'item'
+  value: AstExpr
 }
 
 type CitronellaOptions = {
@@ -151,14 +171,24 @@ export class Citronella {
     this.astNodes = this.walkAst(astStatBlock).nodes
     let previousNode: AstNode | undefined
     for (const node of this.astNodes) {
+      if (!('location' in node)) {
+        // No location, so we can't insert a hook here.
+        // It will probably be inserted on the inside expression
+        // (in case of table items etc).
+        previousNode = node
+        continue
+      }
       if (
         previousNode &&
+        'location' in previousNode &&
         node.location.end.line === previousNode.location.end.line &&
         node.location.end.column === previousNode.location.end.column
-      )
+      ) {
         // Node ends at the same offset as the previous node.
         // Probably a paren-less call. We can't insert a hook here.
+        previousNode = node
         continue
+      }
       let varsString = ''
       if (typeof node === 'object' && node !== null) {
         varsString = this.variableNamesToTable(node.variablesInScope)
