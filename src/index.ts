@@ -139,8 +139,12 @@ export class Citronella {
     proc.stdin.flush()
     proc.stdin.end()
     const output = await response.text()
-    const result = JSON5.parse(output)
-    return result
+    try {
+      return JSON5.parse(output)
+    } catch (e) {
+      console.error(`JSON output from luau-ast: ${output}`)
+      throw e
+    }
   }
 
   private insertTraceHooks(astStatBlock: AstStatBlock) {
